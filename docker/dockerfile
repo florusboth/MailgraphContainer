@@ -1,0 +1,26 @@
+FROM debian:11
+
+RUN apt-get update \
+    && apt-get -y upgrade \
+    && apt-get -y install \
+        nano rrdtool apache2 supervisor \
+        librrds-perl libfile-tail-perl libpython3.9
+
+RUN echo "Alias /mailgraph /var/www/mailgraph\n\
+<Directory /var/www/mailgraph>\n\
+  Options -Indexes +FollowSymLinks +ExecCGI\n\
+  AddHandler cgi-script .cgi\n\
+  DirectoryIndex mailgraph.cgi\n\
+  Require all granted\n\
+</Directory>" >> /etc/apache2/sites-available/mailgraph.conf
+
+RUN a2enmod cgid \
+    && a2ensite mailgraph \
+    && mkdir -p /var/www/mailgraph \
+    && chown -R www-data:www-data /var/www/mailgraph
+
+VOLUME ["/var/log/mail/mail.log", "/var/www/mailgraph"]
+
+CMD ["/bin/sh", "/var/www/mailgraph/startup.sh"]
+
+EXPOSE 80
