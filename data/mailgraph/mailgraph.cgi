@@ -18,6 +18,8 @@ my $points_per_sample = 3;
 my $ypoints           = 200;
 my $ypoints_spf       = $ypoints;
 my $ypoints_err       = $ypoints;
+my $ypoints_dmarc     = $ypoints;
+my $ypoints_dkim      = $ypoints;
 
 my $rrd               = 'rrd/mailgraph.rrd';       # path to where the RRD database is
 my $rrd_virus         = 'rrd/mailgraph_virus.rrd'; # path to where the Virus RRD database is
@@ -38,6 +40,12 @@ my %color = (
 	spfnone    => '000AAA',
 	spffail    => '12FF0A',
 	spfpass    => 'D15400',
+	dmarcnone  => 'FFFF00',
+	dmarcfail  => 'FF00EA',
+	dmarcpass  => '00FFD5',
+	dkimnone   => '3013EC',
+	dkimfail   => '006B3A',
+	dkimpass   => '491503',
 	rejected   => 'AA0000', 
 	bounced    => '000000',
 	virus      => 'DDBB00',
@@ -201,6 +209,88 @@ sub graph_spf($$)
 		'GPRINT:rmspffail:MAX:max\: %4.0lf msgs/min\l',
 	);
 }
+
+# dmarc
+sub graph_dmarc($$)
+{
+	my ($range, $file) = @_;
+	my $step = $range*$points_per_sample/$xpoints;
+	rrd_graph($range, $file, $ypoints_dmarc,
+		"DEF:dmarcpass=$rrd:dmarcpass:AVERAGE",
+		"DEF:mdmarcpass=$rrd:dmarcpass:MAX",
+		"CDEF:rdmarcpass=dmarcpass,60,*",
+		"CDEF:ddmarcpass=dmarcpass,UN,0,dmarcpass,IF,$step,*",
+		"CDEF:sdmarcpass=PREV,UN,ddmarcpass,PREV,IF,ddmarcpass,+",
+		"CDEF:rmdmarcpass=mdmarcpass,60,*",
+		"AREA:rdmarcpass#$color{dmarcpass}:DMARC pass",
+		'GPRINT:sdmarcpass:MAX:total\: %8.0lf msgs',
+		'GPRINT:rdmarcpass:AVERAGE:avg\: %5.2lf msgs/min',
+		'GPRINT:rmdmarcpass:MAX:max\: %4.0lf msgs/min\l',
+		
+		"DEF:dmarcnone=$rrd:dmarcnone:AVERAGE",
+		"DEF:mdmarcnone=$rrd:dmarcnone:MAX",
+		"CDEF:rdmarcnone=dmarcnone,60,*",
+		"CDEF:ddmarcnone=dmarcnone,UN,0,dmarcnone,IF,$step,*",
+		"CDEF:sdmarcnone=PREV,UN,ddmarcnone,PREV,IF,ddmarcnone,+",
+		"CDEF:rmdmarcnone=mdmarcnone,60,*",
+		"STACK:rdmarcnone#$color{dmarcnone}:DMARC none",
+		'GPRINT:sdmarcnone:MAX:total\: %8.0lf msgs',
+		'GPRINT:rdmarcnone:AVERAGE:avg\: %5.2lf msgs/min',
+		'GPRINT:rmdmarcnone:MAX:max\: %4.0lf msgs/min\l',
+
+		"DEF:dmarcfail=$rrd:dmarcfail:AVERAGE",
+		"DEF:mdmarcfail=$rrd:dmarcfail:MAX",
+		"CDEF:rdmarcfail=dmarcfail,60,*",
+		"CDEF:ddmarcfail=dmarcfail,UN,0,dmarcfail,IF,$step,*",
+		"CDEF:sdmarcfail=PREV,UN,ddmarcfail,PREV,IF,ddmarcfail,+",
+		"CDEF:rmdmarcfail=mdmarcfail,60,*",
+		"LINE2:rdmarcfail#$color{dmarcfail}:DMARC fail",
+		'GPRINT:sdmarcfail:MAX:total\: %8.0lf msgs',
+		'GPRINT:rdmarcfail:AVERAGE:avg\: %5.2lf msgs/min',
+		'GPRINT:rmdmarcfail:MAX:max\: %4.0lf msgs/min\l',
+	);
+}
+
+# dkim
+sub graph_dkim($$)
+{
+	my ($range, $file) = @_;
+	my $step = $range*$points_per_sample/$xpoints;
+	rrd_graph($range, $file, $ypoints_dkim,
+		"DEF:dkimpass=$rrd:dkimpass:AVERAGE",
+		"DEF:mdkimpass=$rrd:dkimpass:MAX",
+		"CDEF:rdkimpass=dkimpass,60,*",
+		"CDEF:ddkimpass=dkimpass,UN,0,dkimpass,IF,$step,*",
+		"CDEF:sdkimpass=PREV,UN,ddkimpass,PREV,IF,ddkimpass,+",
+		"CDEF:rmdkimpass=mdkimpass,60,*",
+		"AREA:rdkimpass#$color{dkimpass}:DKIM pass",
+		'GPRINT:sdkimpass:MAX:total\: %8.0lf msgs',
+		'GPRINT:rdkimpass:AVERAGE:avg\: %5.2lf msgs/min',
+		'GPRINT:rmdkimpass:MAX:max\: %4.0lf msgs/min\l',
+		
+		"DEF:dkimnone=$rrd:dkimnone:AVERAGE",
+		"DEF:mdkimnone=$rrd:dkimnone:MAX",
+		"CDEF:rdkimnone=dkimnone,60,*",
+		"CDEF:ddkimnone=dkimnone,UN,0,dkimnone,IF,$step,*",
+		"CDEF:sdkimnone=PREV,UN,ddkimnone,PREV,IF,ddkimnone,+",
+		"CDEF:rmdkimnone=mdkimnone,60,*",
+		"STACK:rdkimnone#$color{dkimnone}:DKIM none",
+		'GPRINT:sdkimnone:MAX:total\: %8.0lf msgs',
+		'GPRINT:rdkimnone:AVERAGE:avg\: %5.2lf msgs/min',
+		'GPRINT:rmdkimnone:MAX:max\: %4.0lf msgs/min\l',
+
+		"DEF:dkimfail=$rrd:dkimfail:AVERAGE",
+		"DEF:mdkimfail=$rrd:dkimfail:MAX",
+		"CDEF:rdkimfail=dkimfail,60,*",
+		"CDEF:ddkimfail=dkimfail,UN,0,dkimfail,IF,$step,*",
+		"CDEF:sdkimfail=PREV,UN,ddkimfail,PREV,IF,ddkimfail,+",
+		"CDEF:rmdkimfail=mdkimfail,60,*",
+		"LINE2:rdkimfail#$color{dkimfail}:DKIM fail",
+		'GPRINT:sdkimfail:MAX:total\: %8.0lf msgs',
+		'GPRINT:rdkimfail:AVERAGE:avg\: %5.2lf msgs/min',
+		'GPRINT:rmdkimfail:MAX:max\: %4.0lf msgs/min\l',
+	);
+}
 sub print_html()
 {
 	print "Content-Type: text/html\n\n";
@@ -232,6 +322,8 @@ HEADER
 		print "  <img src=\"$scriptname?${n}-n\" alt=\"mailgraph\"/><br/>\n"; # sent/received
 		print "  <img src=\"$scriptname?${n}-e\" alt=\"mailgraph\"/><br/>\n"; # errors
 		print "  <img src=\"$scriptname?${n}-s\" alt=\"mailgraph\"/><br/>\n"; # spf
+		print "  <img src=\"$scriptname?${n}-d\" alt=\"mailgraph\"/><br/>\n"; # dmarc
+		print "  <img src=\"$scriptname?${n}-k\" alt=\"mailgraph\"/><br/>\n"; # dkim
 		print "</p>\n";
 	}
 
@@ -284,6 +376,16 @@ sub main()
 		elsif($img =~ /^(\d+)-s$/) {
  			my $file = "$tmp_dir/$uri/mailgraph_$1_spf.png";
  			graph_spf($graphs[$1]{seconds}, $file);
+ 			send_image($file);
+ 		}
+		elsif($img =~ /^(\d+)-d$/) {
+ 			my $file = "$tmp_dir/$uri/mailgraph_$1_dmarc.png";
+ 			graph_dmarc($graphs[$1]{seconds}, $file);
+ 			send_image($file);
+ 		}
+		elsif($img =~ /^(\d+)-k$/) {
+ 			my $file = "$tmp_dir/$uri/mailgraph_$1_dkim.png";
+ 			graph_dkim($graphs[$1]{seconds}, $file);
  			send_image($file);
  		}
 		else {

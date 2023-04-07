@@ -390,6 +390,12 @@ my %sum = (
 	spfnone => 0, 
 	spffail => 0, 
 	spfpass => 0,
+	dmarcnone => 0, 
+	dmarcfail => 0, 
+	dmarcpass => 0, 
+	dkimnone => 0, 
+	dkimfail => 0, 
+	dkimpass => 0, 
 	virus => 0,
 	spam => 0);
 my $rrd_inited=0;
@@ -408,6 +414,12 @@ sub event_spam($);
 sub event_spfnone($);
 sub event_spffail($);
 sub event_spfpass($);
+sub event_dmarcnone($);
+sub event_dmarcfail($);
+sub event_dmarcpass($);
+sub event_dkimnone($);
+sub event_dkimfail($);
+sub event_dkimpass($);
 sub init_rrd($);
 sub update($);
 
@@ -544,6 +556,12 @@ sub init_rrd($)
 				'DS:spfnone:ABSOLUTE:'.($rrdstep*2).':0:U',
 				'DS:spffail:ABSOLUTE:'.($rrdstep*2).':0:U',
 				'DS:spfpass:ABSOLUTE:'.($rrdstep*2).':0:U',
+				'DS:dmarcnone:ABSOLUTE:'.($rrdstep*2).':0:U',
+				'DS:dmarcfail:ABSOLUTE:'.($rrdstep*2).':0:U',
+				'DS:dmarcpass:ABSOLUTE:'.($rrdstep*2).':0:U',
+				'DS:dkimnone:ABSOLUTE:'.($rrdstep*2).':0:U',
+				'DS:dkimfail:ABSOLUTE:'.($rrdstep*2).':0:U',
+				'DS:dkimpass:ABSOLUTE:'.($rrdstep*2).':0:U',
 				"RRA:AVERAGE:0.5:$day_steps:$realrows",   # day
 				"RRA:AVERAGE:0.5:$week_steps:$realrows",  # week
 				"RRA:AVERAGE:0.5:$month_steps:$realrows", # month
@@ -877,6 +895,36 @@ sub process_line($)
 			event($time, 'virus');
 		}
 	}
+	# dmarc
+ 	elsif ($prog eq 'opendmarc') {
+ 		if ($text =~ /pass/) {
+ 			event($time, 'dmarcpass');
+ 		}
+ 		elsif($text =~ /none/) {
+ 			event($time, 'dmarcnone');
+ 		}
+ 		elsif($text =~ /fail/) {
+ 			event($time, 'dmarcfail');
+ 		}
+		else {
+			print "unknown prog: $prog, text: $text \n";
+		}
+ 	}
+	# dkim
+ 	elsif ($prog eq 'opendkim') {
+ 		if ($text =~ /DKIM verification successful/) {
+ 			event($time, 'dkimpass');
+ 		}
+ 		elsif($text =~ /no signature data/) {
+ 			event($time, 'dkimnone');
+ 		}
+ 		elsif($text =~ /bad signature data/) {
+ 			event($time, 'dkimfail');
+ 		}
+		else {
+			print "unknown prog: $prog, text: $text \n";
+		}
+ 	}
 	elsif($prog eq 'avmilter') {
 		# AntiVir Milter
 		if($text =~ /^Alert!/) {
@@ -902,7 +950,7 @@ sub process_line($)
 		}
 	}
 	else {
-		print "unknown prog: $prog, text: $text \n";
+		#print "unknown prog: $prog, text: $text \n";
 	}
 }
 
@@ -921,13 +969,13 @@ sub update($)
 	return 1 if $m == $this_minute;
 	return 0 if $m < $this_minute;
 
-	print "update $this_minute:$sum{sent}:$sum{received}:$sum{bounced}:$sum{rejected}:$sum{spfnone}:$sum{spffail}:$sum{spfpass}:$sum{virus}:$sum{spam}\n" if $opt{verbose};
-	RRDs::update $rrd, "$this_minute:$sum{sent}:$sum{received}:$sum{bounced}:$sum{rejected}:$sum{spfnone}:$sum{spffail}:$sum{spfpass}" unless $opt{'only-virus-rrd'};
+	print "update $this_minute:$sum{sent}:$sum{received}:$sum{bounced}:$sum{rejected}:$sum{spfnone}:$sum{spffail}:$sum{spfpass}:$sum{dmarcnone}:$sum{dmarcfail}:$sum{dmarcpass}:$sum{dkimnone}:$sum{dkimfail}:$sum{dkimpass}:$sum{virus}:$sum{spam}\n" if $opt{verbose};
+	RRDs::update $rrd, "$this_minute:$sum{sent}:$sum{received}:$sum{bounced}:$sum{rejected}:$sum{spfnone}:$sum{spffail}:$sum{spfpass}:$sum{dmarcnone}:$sum{dmarcfail}:$sum{dmarcpass}:$sum{dkimnone}:$sum{dkimfail}:$sum{dkimpass}" unless $opt{'only-virus-rrd'};
 	RRDs::update $rrd_virus, "$this_minute:$sum{virus}:$sum{spam}" unless $opt{'only-mail-rrd'};
 	if($m > $this_minute+$rrdstep) {
 		for(my $sm=$this_minute+$rrdstep;$sm<$m;$sm+=$rrdstep) {
-			print "update $sm:0:0:0:0:0:0:0:0:0 (SKIP)\n" if $opt{verbose};
-			RRDs::update $rrd, "$sm:0:0:0:0:0:0:0" unless $opt{'only-virus-rrd'};
+			print "update $sm:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0 (SKIP)\n" if $opt{verbose};
+			RRDs::update $rrd, "$sm:0:0:0:0:0:0:0:0:0:0:0:0:0" unless $opt{'only-virus-rrd'};
 			RRDs::update $rrd_virus, "$sm:0:0" unless $opt{'only-mail-rrd'};
 		}
 	}
@@ -939,6 +987,12 @@ sub update($)
 	$sum{spfnone}=0;
 	$sum{spffail}=0;
 	$sum{spfpass}=0;
+	$sum{dmarcnone}=0;
+	$sum{dmarcfail}=0;
+	$sum{dmarcpass}=0;
+	$sum{dkimnone}=0;
+	$sum{dkimfail}=0;
+	$sum{dkimpass}=0;
 	$sum{virus}=0;
 	$sum{spam}=0;
 	return 1;
