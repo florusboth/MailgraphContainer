@@ -4,6 +4,7 @@
 # copyright (c) 2000-2007 ETH Zurich
 # copyright (c) 2000-2007 David Schweikert <david@schweikert.ch>
 # released under the GNU General Public License
+# with dkim-, dmarc, spf-patch Sebastian van de Meer <kernel-error@kernel-error.de>
 
 ######## Parse::Syslog 1.09 (automatically embedded) ########
 package Parse::Syslog;
@@ -377,11 +378,20 @@ my $daemon_rrd_dir = '/var/log';
 
 # global variables
 my $logfile;
-my $rrd = "mailgraph.rrd";
-my $rrd_virus = "mailgraph_virus.rrd";
+my $rrd          = "mailgraph.rrd";
+my $rrd_virus    = "mailgraph_virus.rrd";
 my $year;
 my $this_minute;
-my %sum = ( sent => 0, received => 0, bounced => 0, rejected => 0, virus => 0, spam => 0 );
+my %sum = (
+	sent => 0,
+	received => 0,
+	bounced => 0,
+	rejected => 0,
+	spfnone => 0, 
+	spffail => 0, 
+	spfpass => 0,
+	virus => 0,
+	spam => 0);
 my $rrd_inited=0;
 
 my %opt = ();
@@ -395,6 +405,9 @@ sub event_bounced($);
 sub event_rejected($);
 sub event_virus($);
 sub event_spam($);
+sub event_spfnone($);
+sub event_spffail($);
+sub event_spfpass($);
 sub init_rrd($);
 sub update($);
 
@@ -444,8 +457,8 @@ sub main
 	$daemon_pidfile = $opt{daemon_pid} if defined $opt{daemon_pid};
 	$daemon_logfile = $opt{daemon_log} if defined $opt{daemon_log};
 	$daemon_rrd_dir = $opt{daemon_rrd} if defined $opt{daemon_rrd};
-	$rrd		= $opt{rrd_name}.".rrd" if defined $opt{rrd_name};
-	$rrd_virus	= $opt{rrd_name}."_virus.rrd" if defined $opt{rrd_name};
+	$rrd            = $opt{rrd_name}.".rrd" if defined $opt{rrd_name};
+	$rrd_virus      = $opt{rrd_name}."_virus.rrd" if defined $opt{rrd_name};
 
 	# compile --ignore-host regexps
 	if(defined $opt{'ignore-host'}) {
@@ -528,6 +541,9 @@ sub init_rrd($)
 				'DS:recv:ABSOLUTE:'.($rrdstep*2).':0:U',
 				'DS:bounced:ABSOLUTE:'.($rrdstep*2).':0:U',
 				'DS:rejected:ABSOLUTE:'.($rrdstep*2).':0:U',
+				'DS:spfnone:ABSOLUTE:'.($rrdstep*2).':0:U',
+				'DS:spffail:ABSOLUTE:'.($rrdstep*2).':0:U',
+				'DS:spfpass:ABSOLUTE:'.($rrdstep*2).':0:U',
 				"RRA:AVERAGE:0.5:$day_steps:$realrows",   # day
 				"RRA:AVERAGE:0.5:$week_steps:$realrows",  # week
 				"RRA:AVERAGE:0.5:$month_steps:$realrows", # month
@@ -572,7 +588,29 @@ sub process_line($)
 	my $prog = $sl->[2];
 	my $text = $sl->[4];
 
-	if($prog =~ /^postfix\/(.*)/) {
+	# skip dovecot
+	if ( $prog eq 'dovecot' ) {
+		return;
+	}
+	
+	# spf
+	if ( $prog eq 'policyd-spf' ) {
+		if ($text =~/Received-SPF: None/) {
+			event($time, 'spfnone');
+		}
+		elsif ($text =~/Received-SPF: Neutral/) {
+			# Wir behandeln 'Neutral' wie 'None'
+			event($time, 'spfnone');
+		}
+		elsif ($text =~/Received-SPF: Pass/) {
+			event($time, 'spfpass');
+		}
+		elsif ($text =~/Received-SPF:/) {
+			event($time, 'spffail');
+		}
+	}
+	# postfix
+	elsif($prog =~ /^postfix\/(.*)/) {
 		my $prog = $1;
 		if($prog eq 'smtp') {
 			if($text =~ /\bstatus=sent\b/) {
@@ -633,6 +671,7 @@ sub process_line($)
 			}
 		}
 	}
+	# sendmail
 	elsif($prog eq 'sendmail' or $prog eq 'sm-mta') {
 		if($text =~ /\bmailer=local\b/ ) {
 			event($time, 'received');
@@ -686,6 +725,7 @@ sub process_line($)
 			event($time, 'rejected');
 		}
 	}
+	# exim
 	elsif($prog eq 'exim') {
 		if($text =~ /^[0-9a-zA-Z]{6}-[0-9a-zA-Z]{6}-[0-9a-zA-Z]{2} <= \S+/) {
 			event($time, 'received');
@@ -704,6 +744,7 @@ sub process_line($)
 			event($time, 'rejected');
 		}
 	}
+	# amavis
 	elsif($prog eq 'amavis' || $prog eq 'amavisd') {
 		if(   $text =~ /^\([\w-]+\) (Passed|Blocked) SPAM(?:MY)?\b/) {
 			if($text !~ /\btag2=/) { # ignore new per-recipient log entry (2.2.0)
@@ -726,9 +767,6 @@ sub process_line($)
 		elsif($text =~ /^Virus found\b/) {
 			event($time, 'virus');# AMaViS 0.3.12 and amavisd-0.1
 		}
-#		elsif($text =~ /^\([\w-]+\) Passed|Blocked BAD-HEADER\b/) {
-#		       event($time, 'badh');
-#		}
 	}
 	elsif($prog eq 'vagatefwd') {
 		# Vexira antivirus (old)
@@ -761,6 +799,7 @@ sub process_line($)
 			event($time, 'virus');
 		}
 	}
+	# spamd
 	elsif($prog eq 'spamd') {
 		if($text =~ /^(?:spamd: )?identified spam/) {
 			event($time, 'spam');
@@ -773,6 +812,9 @@ sub process_line($)
 	elsif($prog eq 'dspam') {
 		if($text =~ /spam detected from/) {
 			event($time, 'spam');
+		}
+		elsif($text =~ /infected message from/) {
+			event($time, 'virus');
 		}
 	}
 	elsif($prog eq 'spamproxyd' or $prog eq 'spampd') {
@@ -817,6 +859,12 @@ sub process_line($)
 		if($text =~ /Intercepted/) {
 			event($time, 'virus');
 		}
+		if($text =~ /infected/) {
+			event($time, 'virus');
+		}
+		elsif($text =~ /Message.*infected by/) {
+			event($time, 'virus');
+		}
 	}
 	# uncommment for clamassassin:
 	#elsif($prog eq 'clamd') {
@@ -853,6 +901,9 @@ sub process_line($)
 			event($time, 'virus');
 		}
 	}
+	else {
+		print "unknown prog: $prog, text: $text \n";
+	}
 }
 
 sub event($$)
@@ -870,13 +921,13 @@ sub update($)
 	return 1 if $m == $this_minute;
 	return 0 if $m < $this_minute;
 
-	print "update $this_minute:$sum{sent}:$sum{received}:$sum{bounced}:$sum{rejected}:$sum{virus}:$sum{spam}\n" if $opt{verbose};
-	RRDs::update $rrd, "$this_minute:$sum{sent}:$sum{received}:$sum{bounced}:$sum{rejected}" unless $opt{'only-virus-rrd'};
+	print "update $this_minute:$sum{sent}:$sum{received}:$sum{bounced}:$sum{rejected}:$sum{spfnone}:$sum{spffail}:$sum{spfpass}:$sum{virus}:$sum{spam}\n" if $opt{verbose};
+	RRDs::update $rrd, "$this_minute:$sum{sent}:$sum{received}:$sum{bounced}:$sum{rejected}:$sum{spfnone}:$sum{spffail}:$sum{spfpass}" unless $opt{'only-virus-rrd'};
 	RRDs::update $rrd_virus, "$this_minute:$sum{virus}:$sum{spam}" unless $opt{'only-mail-rrd'};
 	if($m > $this_minute+$rrdstep) {
 		for(my $sm=$this_minute+$rrdstep;$sm<$m;$sm+=$rrdstep) {
-			print "update $sm:0:0:0:0:0:0 (SKIP)\n" if $opt{verbose};
-			RRDs::update $rrd, "$sm:0:0:0:0" unless $opt{'only-virus-rrd'};
+			print "update $sm:0:0:0:0:0:0:0:0:0 (SKIP)\n" if $opt{verbose};
+			RRDs::update $rrd, "$sm:0:0:0:0:0:0:0" unless $opt{'only-virus-rrd'};
 			RRDs::update $rrd_virus, "$sm:0:0" unless $opt{'only-mail-rrd'};
 		}
 	}
@@ -885,6 +936,9 @@ sub update($)
 	$sum{received}=0;
 	$sum{bounced}=0;
 	$sum{rejected}=0;
+	$sum{spfnone}=0;
+	$sum{spffail}=0;
+	$sum{spfpass}=0;
 	$sum{virus}=0;
 	$sum{spam}=0;
 	return 1;

@@ -4,6 +4,7 @@
 # copyright (c) 2000-2007 ETH Zurich
 # copyright (c) 2000-2007 David Schweikert <david@schweikert.ch>
 # released under the GNU General Public License
+# with dkim-, dmarc, spf-patch Sebastian van de Meer <kernel-error@kernel-error.de>
 
 use RRDs;
 use POSIX qw(uname);
@@ -12,28 +13,35 @@ my $VERSION = "1.14";
 
 my $host              = (POSIX::uname())[1];
 my $scriptname        = 'mailgraph.cgi';
-my $xpoints           = 800;
+my $xpoints           = 900;
 my $points_per_sample = 3;
-my $ypoints           = 240;
-my $ypoints_err       = 120;
+my $ypoints           = 200;
+my $ypoints_spf       = $ypoints;
+my $ypoints_err       = $ypoints;
+
 my $rrd               = 'rrd/mailgraph.rrd';       # path to where the RRD database is
 my $rrd_virus         = 'rrd/mailgraph_virus.rrd'; # path to where the Virus RRD database is
 my $tmp_dir           = 'images';                  # temporary directory where to store the images
 
 my @graphs = (
-	{ title => 'Last Day',   seconds => 3600*24,        },
-	{ title => 'Last Week',  seconds => 3600*24*7,      },
-	{ title => 'Last Month', seconds => 3600*24*31,     },
-	{ title => 'Last Year',  seconds => 3600*24*365, },
+	{ title => 'Last Day',     seconds => 3600 * 24,          },
+	{ title => 'Last Week',    seconds => 3600 * 24 * 7,      },
+	{ title => 'Last 2 Weeks', seconds => 3600 * 24 * 7 * 2,  },
+	{ title => 'Last Month',   seconds => 3600 * 24 * 31,     },
+	{ title => 'Last 2 Month', seconds => 3600 * 24 * 31 * 2, },
+	{ title => 'Last Year',    seconds => 3600 * 24 * 365,    },
 );
 
 my %color = (
-	sent     => '000099', # rrggbb in hex
-	received => '009900',
-	rejected => 'AA0000', 
-	bounced  => '000000',
-	virus    => 'DDBB00',
-	spam     => '999999',
+	sent       => '000099', # rrggbb in hex
+	received   => '009900',
+	spfnone    => '000AAA',
+	spffail    => '12FF0A',
+	spfpass    => 'D15400',
+	rejected   => 'AA0000', 
+	bounced    => '000000',
+	virus      => 'DDBB00',
+	spam       => '999999',
 );
 
 sub rrd_graph(@)
@@ -70,6 +78,7 @@ sub rrd_graph(@)
 	die "ERROR: $ERR\n" if $ERR;
 }
 
+# sent/received
 sub graph($$)
 {
 	my ($range, $file) = @_;
@@ -99,6 +108,7 @@ sub graph($$)
 	);
 }
 
+# error
 sub graph_err($$)
 {
 	my ($range, $file) = @_;
@@ -151,6 +161,46 @@ sub graph_err($$)
 	);
 }
 
+# spf
+sub graph_spf($$)
+{
+	my ($range, $file) = @_;
+	my $step = $range*$points_per_sample/$xpoints;
+	rrd_graph($range, $file, $ypoints_spf,
+		"DEF:spfpass=$rrd:spfpass:AVERAGE",
+		"DEF:mspfpass=$rrd:spfpass:MAX",
+		"CDEF:rspfpass=spfpass,60,*",
+		"CDEF:dspfpass=spfpass,UN,0,spfpass,IF,$step,*",
+		"CDEF:sspfpass=PREV,UN,dspfpass,PREV,IF,dspfpass,+",
+		"CDEF:rmspfpass=mspfpass,60,*",
+		"AREA:rspfpass#$color{spfpass}:SPF pass",
+		'GPRINT:sspfpass:MAX:total\: %8.0lf msgs',
+		'GPRINT:rspfpass:AVERAGE:avg\: %5.2lf msgs/min',
+		'GPRINT:rmspfpass:MAX:max\: %4.0lf msgs/min\l',
+	
+		"DEF:spfnone=$rrd:spfnone:AVERAGE",
+		"DEF:mspfnone=$rrd:spfnone:MAX",
+		"CDEF:rspfnone=spfnone,60,*",
+		"CDEF:dspfnone=spfnone,UN,0,spfnone,IF,$step,*",
+		"CDEF:sspfnone=PREV,UN,dspfnone,PREV,IF,dspfnone,+",
+		"CDEF:rmspfnone=mspfnone,60,*",
+		"STACK:rspfnone#$color{spfnone}:SPF none",
+		'GPRINT:sspfnone:MAX:total\: %8.0lf msgs',
+		'GPRINT:rspfnone:AVERAGE:avg\: %5.2lf msgs/min',
+		'GPRINT:rmspfnone:MAX:max\: %4.0lf msgs/min\l',
+
+		"DEF:spffail=$rrd:spffail:AVERAGE",
+		"DEF:mspffail=$rrd:spffail:MAX",
+		"CDEF:rspffail=spffail,60,*",
+		"CDEF:dspffail=spffail,UN,0,spffail,IF,$step,*",
+		"CDEF:sspffail=PREV,UN,dspffail,PREV,IF,dspffail,+",
+		"CDEF:rmspffail=mspffail,60,*",
+		"LINE2:rspffail#$color{spffail}:SPF fail",
+		'GPRINT:sspffail:MAX:total\: %8.0lf msgs',
+		'GPRINT:rspffail:AVERAGE:avg\: %5.2lf msgs/min',
+		'GPRINT:rmspffail:MAX:max\: %4.0lf msgs/min\l',
+	);
+}
 sub print_html()
 {
 	print "Content-Type: text/html\n\n";
@@ -161,7 +211,7 @@ sub print_html()
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 <title>Mail statistics for $host</title>
-<meta http-equiv="Refresh" content="300" />
+<meta http-equiv="Refresh" content="30" />
 <meta http-equiv="Pragma" content="no-cache" />
 <link rel="stylesheet" href="mailgraph.css" type="text/css" />
 </head>
@@ -178,19 +228,18 @@ HEADER
 
 	for my $n (0..$#graphs) {
 		print "<h2 id=\"G$n\">$graphs[$n]{title}</h2>\n";
-		print "<p><img src=\"$scriptname?${n}-n\" alt=\"mailgraph\"/><br/>\n";
-		print "<img src=\"$scriptname?${n}-e\" alt=\"mailgraph\"/></p>\n";
+		print "<p>\n";
+		print "  <img src=\"$scriptname?${n}-n\" alt=\"mailgraph\"/><br/>\n"; # sent/received
+		print "  <img src=\"$scriptname?${n}-e\" alt=\"mailgraph\"/><br/>\n"; # errors
+		print "  <img src=\"$scriptname?${n}-s\" alt=\"mailgraph\"/><br/>\n"; # spf
+		print "</p>\n";
 	}
 
 	print <<FOOTER;
-<hr/>
-<table><tr><td>
-<a href="http://mailgraph.schweikert.ch/">Mailgraph</a> $VERSION
-by <a href="http://david.schweikert.ch/">David Schweikert</a></td>
-<td align="right">
-<a href="http://oss.oetiker.ch/rrdtool/"><img src="http://oss.oetiker.ch/rrdtool/.pics/rrdtool.gif" alt="" width="120" height="34"/></a>
-</td></tr></table>
-</body></html>
+  <hr/>
+  <a href="http://mailgraph.schweikert.ch/">Mailgraph</a> $VERSION by <a href="http://david.schweikert.ch/">David Schweikert</a>
+</body>
+</html>
 FOOTER
 }
 
@@ -232,6 +281,11 @@ sub main()
 			graph_err($graphs[$1]{seconds}, $file);
 			send_image($file);
 		}
+		elsif($img =~ /^(\d+)-s$/) {
+ 			my $file = "$tmp_dir/$uri/mailgraph_$1_spf.png";
+ 			graph_spf($graphs[$1]{seconds}, $file);
+ 			send_image($file);
+ 		}
 		else {
 			die "ERROR: invalid argument\n";
 		}
