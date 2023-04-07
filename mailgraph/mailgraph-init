@@ -9,9 +9,8 @@
 # processname: mailgraph.pl
 # pidfile: /var/run/mailgraph.pid
 
-
 PATH=/bin:/usr/bin
-MAILGRAPH_PL=/var/www/mailgraph/mailgraph.pl
+MAILGRAPH_PL=/var/mailgraph/mailgraph.pl
 MAIL_LOG=/var/log/mail/mail.log
 PID_FILE=/var/run/mailgraph.pid
 RRD_DIR=/var/www/mailgraph/rrd

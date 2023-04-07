@@ -3,7 +3,7 @@ service apache2 start
 echo "  done"
 
 echo "Starting mailgraph.."
-sh /var/www/mailgraph/mailgraph-init start
+sh /var/mailgraph/mailgraph-init start
 echo "  done"
 
-/bin/bash
+tail -f /dev/null
