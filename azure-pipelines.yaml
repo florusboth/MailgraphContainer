@@ -1,0 +1,49 @@
+trigger:
+  - main
+
+variables:
+  - name: Tag
+    value: "$(Build.BuildNumber)"
+  - name: Repository
+    value: "davidullrich/mailgraph"
+
+jobs:
+- job: BuildAndPublish
+  displayName: Build and Publish Image
+
+  pool:
+    vmImage: ubuntu-latest
+
+  steps:
+  - task: Docker@2
+    displayName: Login
+    inputs:
+      command: login
+      containerRegistry: DockerHubConnection
+
+  - task: Docker@2
+    displayName: Build Image
+    inputs:
+      command: build
+      dockerfile: "$(Build.SourcesDirectory)/dockerfile"
+      repository: $(Repository)
+      addBaseImageData: false
+      addPipelineData: false
+      tags: |
+        $(Tag)
+        latest
+  
+  - task: Docker@2
+    displayName: Push Image
+    inputs:
+      command: push
+      repository: $(Repository)
+      tags: |
+        $(Tag)
+        latest
+    
+  - task: Docker@2
+    displayName: Logout
+    inputs:
+      command: logout
+      containerRegistry: DockerHubConnection
