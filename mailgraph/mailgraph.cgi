@@ -301,7 +301,7 @@ sub print_html()
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 <title>Mail statistics for $host</title>
-<meta http-equiv="Refresh" content="30" />
+<meta http-equiv="Refresh" content="300" />
 <meta http-equiv="Pragma" content="no-cache" />
 <link rel="stylesheet" href="mailgraph.css" type="text/css" />
 </head>
