@@ -20,10 +20,12 @@ my $ypoints_spf       = $ypoints;
 my $ypoints_err       = $ypoints;
 my $ypoints_dmarc     = $ypoints;
 my $ypoints_dkim      = $ypoints;
+my $ypoints_dovecot   = $ypoints;
 
-my $rrd               = 'rrd/mailgraph.rrd';       # path to where the RRD database is
-my $rrd_virus         = 'rrd/mailgraph_virus.rrd'; # path to where the Virus RRD database is
-my $tmp_dir           = 'images';                  # temporary directory where to store the images
+my $rrd               = 'rrd/mailgraph.rrd';
+my $rrd_virus         = 'rrd/mailgraph_virus.rrd';
+my $rrd_dovecot	      = 'rrd/mailgraph_dovecot.rrd';
+my $tmp_dir           = 'images';
 
 my @graphs = (
 	{ title => 'Last Day',     seconds => 3600 * 24,          },
@@ -35,21 +37,23 @@ my @graphs = (
 );
 
 my %color = (
-	sent       => '000099', # rrggbb in hex
-	received   => '009900',
-	spfnone    => '000AAA',
-	spffail    => '12FF0A',
-	spfpass    => 'D15400',
-	dmarcnone  => 'FFFF00',
-	dmarcfail  => 'FF00EA',
-	dmarcpass  => '00FFD5',
-	dkimnone   => '3013EC',
-	dkimfail   => '006B3A',
-	dkimpass   => '491503',
-	rejected   => 'AA0000', 
-	bounced    => '000000',
-	virus      => 'DDBB00',
-	spam       => '999999',
+	sent                 => '000099', # rrggbb in hex
+	received             => '009900',
+	spfnone              => '000AAA',
+	spffail              => '12FF0A',
+	spfpass              => 'D15400',
+	dmarcnone            => 'FFFF00',
+	dmarcfail            => 'FF00EA',
+	dmarcpass            => '00FFD5',
+	dkimnone             => '3013EC',
+	dkimfail             => '006B3A',
+	dkimpass             => '491503',
+	rejected             => 'AA0000', 
+	bounced              => '000000',
+	virus                => 'DDBB00',
+	spam                 => '999999',
+	dovecotloginsuccess  => '999999',
+	dovecotloginfailed   => '006400',
 );
 
 sub rrd_graph(@)
@@ -291,6 +295,38 @@ sub graph_dkim($$)
 		'GPRINT:rmdkimfail:MAX:max\: %4.0lf msgs/min\l',
 	);
 }
+
+# dovecot
+sub graph_dovecot($$)
+{
+	my ($range, $file) = @_;
+	my $step = $range * $points_per_sample / $xpoints;
+	
+	rrd_graph($range, $file, $ypoints_dovecot,
+		"DEF:dovecotloginsuccess=$rrd_dovecot:dovecotloginsuccess:AVERAGE",
+		"DEF:mdovecotloginsuccess=$rrd_dovecot:dovecotloginsuccess:MAX",
+		"CDEF:rdovecotloginsuccess=dovecotloginsuccess,60,*",
+		"CDEF:ddovecotloginsuccess=dovecotloginsuccess,UN,0,dovecotloginsuccess,IF,$step,*",
+		"CDEF:sdovecotloginsuccess=PREV,UN,ddovecotloginsuccess,PREV,IF,ddovecotloginsuccess,+",
+		"CDEF:rmdovecotloginsuccess=mdovecotloginsuccess,60,*",
+		"AREA:rdovecotloginsuccess#$color{dovecotloginsuccess}:Dovecot login successful",
+		'GPRINT:sdovecotloginsuccess:MAX:total\: %8.0lf msgs',
+		'GPRINT:rdovecotloginsuccess:AVERAGE:avg\: %5.2lf msgs/min',
+		'GPRINT:rmdovecotloginsuccess:MAX:max\: %4.0lf msgs/min\l',
+
+		"DEF:dovecotloginfailed=$rrd_dovecot:dovecotloginfailed:AVERAGE",
+		"DEF:mdovecotloginfailed=$rrd_dovecot:dovecotloginfailed:MAX",
+		"CDEF:rdovecotloginfailed=dovecotloginfailed,60,*",
+		"CDEF:ddovecotloginfailed=dovecotloginfailed,UN,0,dovecotloginfailed,IF,$step,*",
+		"CDEF:sdovecotloginfailed=PREV,UN,ddovecotloginfailed,PREV,IF,ddovecotloginfailed,+",
+		"CDEF:rmdovecotloginfailed=mdovecotloginfailed,60,*",
+		"LINE2:rdovecotloginfailed#$color{dovecotloginfailed}:Dovecot login failed    ",
+		'GPRINT:sdovecotloginfailed:MAX:total\: %8.0lf msgs',
+		'GPRINT:rdovecotloginfailed:AVERAGE:avg\: %5.2lf msgs/min',
+		'GPRINT:rmdovecotloginfailed:MAX:max\: %4.0lf msgs/min\l',
+	);
+}
+
 sub print_html()
 {
 	print "Content-Type: text/html\n\n";
@@ -299,11 +335,11 @@ sub print_html()
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html>
 <head>
-<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-<title>Mail statistics for $host</title>
-<meta http-equiv="Refresh" content="300" />
-<meta http-equiv="Pragma" content="no-cache" />
-<link rel="stylesheet" href="mailgraph.css" type="text/css" />
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <title>Mail statistics for $host</title>
+  <meta http-equiv="Refresh" content="300" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <link rel="stylesheet" href="mailgraph.css" type="text/css" />
 </head>
 <body>
 HEADER
@@ -324,6 +360,7 @@ HEADER
 		print "  <img src=\"$scriptname?${n}-s\" alt=\"mailgraph\"/><br/>\n"; # spf
 		print "  <img src=\"$scriptname?${n}-d\" alt=\"mailgraph\"/><br/>\n"; # dmarc
 		print "  <img src=\"$scriptname?${n}-k\" alt=\"mailgraph\"/><br/>\n"; # dkim
+		print "  <img src=\"$scriptname?${n}-v\" alt=\"mailgraph\"/><br/>\n"; # dovecot
 		print "</p>\n";
 	}
 
@@ -386,6 +423,11 @@ sub main()
 		elsif($img =~ /^(\d+)-k$/) {
  			my $file = "$tmp_dir/$uri/mailgraph_$1_dkim.png";
  			graph_dkim($graphs[$1]{seconds}, $file);
+ 			send_image($file);
+ 		}
+		elsif($img =~ /^(\d+)-v$/) {
+ 			my $file = "$tmp_dir/$uri/mailgraph_$1_dovecot.png";
+ 			graph_dovecot($graphs[$1]{seconds}, $file);
  			send_image($file);
  		}
 		else {

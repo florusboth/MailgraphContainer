@@ -380,6 +380,7 @@ my $daemon_rrd_dir = '/var/log';
 my $logfile;
 my $rrd          = "mailgraph.rrd";
 my $rrd_virus    = "mailgraph_virus.rrd";
+my $rrd_dovecot  = "mailgraph_dovecot.rrd";
 my $year;
 my $this_minute;
 my %sum = (
@@ -397,7 +398,9 @@ my %sum = (
 	dkimfail => 0, 
 	dkimpass => 0, 
 	virus => 0,
-	spam => 0);
+	spam => 0,
+	dovecotloginsuccess => 0,
+	dovecotloginfailed => 0);
 my $rrd_inited=0;
 
 my %opt = ();
@@ -420,6 +423,8 @@ sub event_dmarcpass($);
 sub event_dkimnone($);
 sub event_dkimfail($);
 sub event_dkimpass($);
+sub event_dovecotloginsuccess($);
+sub event_dovecotloginfailed($);
 sub init_rrd($);
 sub update($);
 
@@ -471,6 +476,7 @@ sub main
 	$daemon_rrd_dir = $opt{daemon_rrd} if defined $opt{daemon_rrd};
 	$rrd            = $opt{rrd_name}.".rrd" if defined $opt{rrd_name};
 	$rrd_virus      = $opt{rrd_name}."_virus.rrd" if defined $opt{rrd_name};
+	$rrd_dovecot    = $opt{rrd_name}."_dovecot.rrd" if defined $opt{rrd_name};
 
 	# compile --ignore-host regexps
 	if(defined $opt{'ignore-host'}) {
@@ -596,6 +602,25 @@ sub init_rrd($)
 		$this_minute = RRDs::last($rrd_virus) + $rrdstep;
 	}
 
+	# dovecot rrd
+	if(! -f $rrd_dovecot and ! $opt{'only-mail-rrd'}) {
+		RRDs::create($rrd_dovecot, '--start', $m, '--step', $rrdstep,
+				'DS:dovecotloginsuccess:ABSOLUTE:'.($rrdstep*2).':0:U',
+				'DS:dovecotloginfailed:ABSOLUTE:'.($rrdstep*2).':0:U',
+				"RRA:AVERAGE:0.5:$day_steps:$realrows",   # day
+				"RRA:AVERAGE:0.5:$week_steps:$realrows",  # week
+				"RRA:AVERAGE:0.5:$month_steps:$realrows", # month
+				"RRA:AVERAGE:0.5:$year_steps:$realrows",  # year
+				"RRA:MAX:0.5:$day_steps:$realrows",       # day
+				"RRA:MAX:0.5:$week_steps:$realrows",      # week
+				"RRA:MAX:0.5:$month_steps:$realrows",     # month
+				"RRA:MAX:0.5:$year_steps:$realrows",      # year
+				);
+	}
+	elsif(-f $rrd_dovecot and ! defined $rrd_dovecot) {
+		$this_minute = RRDs::last($rrd_dovecot) + $rrdstep;
+	}
+
 	$rrd_inited=1;
 }
 
@@ -606,18 +631,21 @@ sub process_line($)
 	my $prog = $sl->[2];
 	my $text = $sl->[4];
 
-	# skip dovecot
+	# dovecot
 	if ( $prog eq 'dovecot' ) {
-		return;
+		if($text =~ /imap-login: Login/) {
+			event($time, 'dovecotloginsuccess');
+		}
+		elsif($text =~ /unknown user/) {
+			event($time, 'dovecotloginfailed');
+		}
 	}
-	
 	# spf
-	if ( $prog eq 'policyd-spf' ) {
+	elsif ( $prog eq 'policyd-spf' ) {
 		if ($text =~/Received-SPF: None/) {
 			event($time, 'spfnone');
 		}
 		elsif ($text =~/Received-SPF: Neutral/) {
-			# Wir behandeln 'Neutral' wie 'None'
 			event($time, 'spfnone');
 		}
 		elsif ($text =~/Received-SPF: Pass/) {
@@ -884,12 +912,6 @@ sub process_line($)
 			event($time, 'virus');
 		}
 	}
-	# uncommment for clamassassin:
-	#elsif($prog eq 'clamd') {
-	#	if($text =~ /^stream: .* FOUND$/) {
-	#		event($time, 'virus');
-	#	}
-	#}
 	elsif ($prog eq 'smtp-vilter') {
 		if ($text =~ /clamd: found/) {
 			event($time, 'virus');
@@ -969,16 +991,21 @@ sub update($)
 	return 1 if $m == $this_minute;
 	return 0 if $m < $this_minute;
 
-	print "update $this_minute:$sum{sent}:$sum{received}:$sum{bounced}:$sum{rejected}:$sum{spfnone}:$sum{spffail}:$sum{spfpass}:$sum{dmarcnone}:$sum{dmarcfail}:$sum{dmarcpass}:$sum{dkimnone}:$sum{dkimfail}:$sum{dkimpass}:$sum{virus}:$sum{spam}\n" if $opt{verbose};
+	print "update $this_minute:$sum{sent}:$sum{received}:$sum{bounced}:$sum{rejected}:$sum{spfnone}:$sum{spffail}:$sum{spfpass}:$sum{dmarcnone}:$sum{dmarcfail}:$sum{dmarcpass}:$sum{dkimnone}:$sum{dkimfail}:$sum{dkimpass}:$sum{virus}:$sum{spam}:$sum{dovecotloginsuccess}:$sum{dovecotloginfailed}\n" if $opt{verbose};
+	
 	RRDs::update $rrd, "$this_minute:$sum{sent}:$sum{received}:$sum{bounced}:$sum{rejected}:$sum{spfnone}:$sum{spffail}:$sum{spfpass}:$sum{dmarcnone}:$sum{dmarcfail}:$sum{dmarcpass}:$sum{dkimnone}:$sum{dkimfail}:$sum{dkimpass}" unless $opt{'only-virus-rrd'};
 	RRDs::update $rrd_virus, "$this_minute:$sum{virus}:$sum{spam}" unless $opt{'only-mail-rrd'};
+	RRDs::update $rrd_dovecot , "$this_minute:$sum{dovecotloginsuccess}:$sum{dovecotloginfailed}" unless $opt{'only-mail-rrd'};
+	
 	if($m > $this_minute+$rrdstep) {
 		for(my $sm=$this_minute+$rrdstep;$sm<$m;$sm+=$rrdstep) {
-			print "update $sm:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0 (SKIP)\n" if $opt{verbose};
+			print "update $sm:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0 (SKIP)\n" if $opt{verbose};
 			RRDs::update $rrd, "$sm:0:0:0:0:0:0:0:0:0:0:0:0:0" unless $opt{'only-virus-rrd'};
 			RRDs::update $rrd_virus, "$sm:0:0" unless $opt{'only-mail-rrd'};
+			RRDs::update $rrd_dovecot, "$sm:0:0" unless $opt{'only-mail-rrd'};
 		}
 	}
+
 	$this_minute = $m;
 	$sum{sent}=0;
 	$sum{received}=0;
@@ -995,6 +1022,8 @@ sub update($)
 	$sum{dkimpass}=0;
 	$sum{virus}=0;
 	$sum{spam}=0;
+	$sum{dovecotloginsuccess}=0;
+	$sum{dovecotloginfailed}=0;
 	return 1;
 }
 
