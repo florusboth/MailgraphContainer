@@ -309,10 +309,10 @@ sub graph_dovecot($$)
 		"CDEF:ddovecotloginsuccess=dovecotloginsuccess,UN,0,dovecotloginsuccess,IF,$step,*",
 		"CDEF:sdovecotloginsuccess=PREV,UN,ddovecotloginsuccess,PREV,IF,ddovecotloginsuccess,+",
 		"CDEF:rmdovecotloginsuccess=mdovecotloginsuccess,60,*",
-		"AREA:rdovecotloginsuccess#$color{dovecotloginsuccess}:Dovecot login successful",
-		'GPRINT:sdovecotloginsuccess:MAX:total\: %8.0lf msgs',
-		'GPRINT:rdovecotloginsuccess:AVERAGE:avg\: %5.2lf msgs/min',
-		'GPRINT:rmdovecotloginsuccess:MAX:max\: %4.0lf msgs/min\l',
+		"AREA:rdovecotloginsuccess#$color{dovecotloginsuccess}:Dovecot logins successful",
+		'GPRINT:sdovecotloginsuccess:MAX:total\: %8.0lf logins',
+		'GPRINT:rdovecotloginsuccess:AVERAGE:avg\: %5.2lf logins/min',
+		'GPRINT:rmdovecotloginsuccess:MAX:max\: %4.0lf logins/min\l',
 
 		"DEF:dovecotloginfailed=$rrd_dovecot:dovecotloginfailed:AVERAGE",
 		"DEF:mdovecotloginfailed=$rrd_dovecot:dovecotloginfailed:MAX",
@@ -320,10 +320,10 @@ sub graph_dovecot($$)
 		"CDEF:ddovecotloginfailed=dovecotloginfailed,UN,0,dovecotloginfailed,IF,$step,*",
 		"CDEF:sdovecotloginfailed=PREV,UN,ddovecotloginfailed,PREV,IF,ddovecotloginfailed,+",
 		"CDEF:rmdovecotloginfailed=mdovecotloginfailed,60,*",
-		"LINE2:rdovecotloginfailed#$color{dovecotloginfailed}:Dovecot login failed    ",
-		'GPRINT:sdovecotloginfailed:MAX:total\: %8.0lf msgs',
-		'GPRINT:rdovecotloginfailed:AVERAGE:avg\: %5.2lf msgs/min',
-		'GPRINT:rmdovecotloginfailed:MAX:max\: %4.0lf msgs/min\l',
+		"LINE2:rdovecotloginfailed#$color{dovecotloginfailed}:Dovecot logins failed    ",
+		'GPRINT:sdovecotloginfailed:MAX:total\: %8.0lf logins',
+		'GPRINT:rdovecotloginfailed:AVERAGE:avg\: %5.2lf logins/min',
+		'GPRINT:rmdovecotloginfailed:MAX:max\: %4.0lf logins/min\l',
 	);
 }
 
