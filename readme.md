@@ -4,7 +4,8 @@ It is based on the [Mailgraph](https://mailgraph.schweikert.ch) project from Dav
 
 The docker image is available at [Docker Hub](https://hub.docker.com/r/davidullrich/mailgraph).
 
-For more informations, see [this blog post](https://www.production-ready.de/2023/04/15/mailgraph-docker-container.html) (german).
+For more informations, see [this blog post](https://www.production-ready.de/2023/04/15/mailgraph-docker-container-en.html)
+(german verison [here](https://www.production-ready.de/2023/04/15/mailgraph-docker-container.html)).
 
 # Usage
 
