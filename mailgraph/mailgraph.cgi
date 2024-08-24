@@ -34,6 +34,7 @@ my @graphs = (
 	{ title => 'Last Month',   seconds => 3600 * 24 * 31,     },
 	{ title => 'Last 2 Month', seconds => 3600 * 24 * 31 * 2, },
 	{ title => 'Last Year',    seconds => 3600 * 24 * 365,    },
+	{ title => 'Last 2 Years', seconds => 3600 * 24 * 365 * 2 },
 );
 
 my %color = (
