@@ -5,7 +5,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 # Install dependencies
 RUN apt-get update \
     && apt-get -y upgrade \
-    && apt-get -y install nano rrdtool apache2 librrds-perl libfile-tail-perl libpython3.9 \
+    && apt-get -y install libparse-syslog-perl rrdtool apache2 librrds-perl libfile-tail-perl libpython3.9 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /var/mailgraph /var/www/mailgraph

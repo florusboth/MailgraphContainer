@@ -14,11 +14,12 @@ MAILGRAPH_PL=/var/mailgraph/mailgraph.pl
 MAIL_LOG=/var/log/mail/mail.log
 PID_FILE=/var/run/mailgraph.pid
 RRD_DIR=/var/www/mailgraph/rrd
+LOGTYPE=rsyslog
 
 case "$1" in
 'start')
 	echo "Starting mail statistics grapher: mailgraph";
-	nice -19 $MAILGRAPH_PL -l $MAIL_LOG -d \
+	nice -19 $MAILGRAPH_PL -l $MAIL_LOG --logtype rsyslog -d \
 		--daemon-pid=$PID_FILE --daemon-rrd=$RRD_DIR
 	;;
 
